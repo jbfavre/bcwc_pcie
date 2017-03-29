@@ -1,3 +1,9 @@
+broadcom-facetimehd (0.0.1~git20170329-0712f39-1~bpo9+1) stretch-backports; urgency=medium
+
+  * Rebuild for stretch-backports.
+
+ -- Jean Baptiste Favre <debian@jbfavre.org>  Wed, 29 Mar 2017 13:19:11 +0200
+
 broadcom-facetimehd (0.0.1~git20170329-0712f39-1) unstable; urgency=medium
 
   * Merge upstream master up to commit 0712f39
