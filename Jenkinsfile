@@ -48,7 +48,7 @@ stage('Build source package')
 
         // Stash source package so that it can be build later on slaves
         stash name: 'source',
-            includes: '*.gz,*.bz2,*.xz,*.deb,*.dsc,*.changes, lintian.txt',
+            includes: '*.gz,*.bz2,*.xz,*.deb,*.dsc,*.buildinfo,*.changes, lintian.txt',
             useDefaultExcludes: false
     }
 
@@ -81,7 +81,7 @@ stage name: 'Build binary packages'
             sh '/usr/bin/build-and-provide-package'
         }
         stash name: 'binaries',
-            includes: '*.gz,*.bz2,*.xz,*.deb,*.dsc,*.changes,lintian.txt,piuparts*',
+            includes: '*.gz,*.bz2,*.xz,*.deb,*.dsc,*.buildinfo,*.changes,lintian.txt,piuparts*',
             useDefaultExcludes: false
     }
 
