@@ -1,7 +1,8 @@
 /*
  * FacetimeHD camera driver
  *
- * Copyright (C) 2014 Patrik Jakobsson (patrik.r.jakobsson@gmail.com)
+ * Copyright (C) 2014 Patrik Jakobsson <patrik.r.jakobsson@gmail.com>
+ *		 2016 Sven Schnelle <svens@stackframe.org>
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published by
@@ -44,10 +45,11 @@ int isp_mem_init(struct fthd_private *dev_priv)
 					    FTHD_MEM_FW_SIZE);
 
 	if (!dev_priv->firmware) {
-		dev_err(&dev_priv->pdev->dev,
-			"Failed to preallocate firmware memory\n");
+		pr_err("Failed to preallocate firmware memory\n");
+		kfree(dev_priv->mem);
 		return -ENOMEM;
 	}
+
 	return 0;
 }
 
@@ -67,9 +69,8 @@ struct isp_mem_obj *isp_mem_create(struct fthd_private *dev_priv,
 	ret = allocate_resource(root, &obj->base, size, root->start, root->end,
 				PAGE_SIZE, NULL, NULL);
 	if (ret) {
-		dev_err(&dev_priv->pdev->dev,
-			"Failed to allocate resource (size: %Ld, start: %Ld, end: %Ld)\n",
-			size, root->start, root->end);
+		pr_err("Failed to allocate resource (size: %Ld, start: %Ld, end: %Ld)\n",
+		       size, root->start, root->end);
 		kfree(obj);
 		obj = NULL;
 	}
@@ -101,11 +102,9 @@ static int isp_acpi_set_power(struct fthd_private *dev_priv, int power)
 	union acpi_object *result;
 	int ret = 0;
 
-
 	handle = ACPI_HANDLE(&dev_priv->pdev->dev);
-	if(!handle) {
-		dev_err(&dev_priv->pdev->dev,
-			"Failed to get S2 CMPE ACPI handle\n");
+	if (!handle) {
+		pr_err("Failed to get S2 CMPE ACPI handle\n");
 		ret = -ENODEV;
 		goto out;
 	}
@@ -118,8 +117,7 @@ static int isp_acpi_set_power(struct fthd_private *dev_priv, int power)
 
 	status = acpi_evaluate_object(handle, "CMPE", &arg_list, &buffer);
 	if (ACPI_FAILURE(status)) {
-		dev_err(&dev_priv->pdev->dev,
-			"Failed to execute S2 CMPE ACPI method\n");
+		pr_err("Failed to execute S2 CMPE ACPI method\n");
 		ret = -ENODEV;
 		goto out;
 	}
@@ -127,19 +125,13 @@ static int isp_acpi_set_power(struct fthd_private *dev_priv, int power)
 	result = buffer.pointer;
 
 	if (result->type != ACPI_TYPE_INTEGER || result->integer.value != 0) {
-		dev_err(&dev_priv->pdev->dev,
-			"Invalid ACPI response (len: %Ld)\n", buffer.length);
+		pr_err("Invalid ACPI response (len: %Ld)\n", buffer.length);
 		ret = -EINVAL;
 	}
 
 out:
 	kfree(buffer.pointer);
 	return ret;
-}
-
-static int isp_enable_sensor(struct fthd_private *dev_priv)
-{
-	return 0;
 }
 
 static int isp_load_firmware(struct fthd_private *dev_priv)
@@ -156,11 +148,11 @@ static int isp_load_firmware(struct fthd_private *dev_priv)
 		return -ENOMEM;
 
 	if (dev_priv->firmware->base.start != dev_priv->mem->start) {
-		dev_err(&dev_priv->pdev->dev,
-			"Misaligned firmware memory object (offset: %lu)\n",
-			dev_priv->firmware->offset);
+		pr_err("Misaligned firmware memory object (offset: %lu)\n",
+		       dev_priv->firmware->offset);
 		isp_mem_destroy(dev_priv->firmware);
 		dev_priv->firmware = NULL;
+
 		return -EBUSY;
 	}
 
@@ -168,8 +160,7 @@ static int isp_load_firmware(struct fthd_private *dev_priv)
 
 	/* Might need a flush here if we map ISP memory cached */
 
-	dev_info(&dev_priv->pdev->dev, "Loaded firmware, size: %lukb\n",
-		 fw->size / 1024);
+	pr_info("Loaded firmware, size: %lukb\n", fw->size / 1024);
 
 	release_firmware(fw);
 
@@ -254,10 +245,11 @@ static int isp_fill_channel_info(struct fthd_private *dev_priv, int offset, int 
 	    || !dev_priv->channel_shared_malloc || !dev_priv->channel_io
 	    || !dev_priv->channel_buf_h2t || !dev_priv->channel_buf_t2h
 	    || !dev_priv->channel_io_t2h) {
-		dev_err(&dev_priv->pdev->dev, "did not find all of the required channels\n");
+		pr_err("Did not find all of the required channels\n");
 		goto out;
 	}
 	return 0;
+
 out:
 	isp_free_channel_info(dev_priv);
 	return -ENOMEM;
@@ -285,7 +277,7 @@ static int fthd_isp_cmd(struct fthd_private *dev_priv, enum fthd_isp_cmds comman
 
 	request = isp_mem_create(dev_priv, FTHD_MEM_CMD, len);
 	if (!request) {
-		dev_err(&dev_priv->pdev->dev, "failed to allocate cmd memory object\n");
+		pr_err("Failed to allocate cmd memory object\n");
 		return -ENOMEM;
 	}
 
@@ -323,8 +315,10 @@ static int fthd_isp_cmd(struct fthd_private *dev_priv, enum fthd_isp_cmds comman
 	request_size = FTHD_S2_MEM_READ(entry + FTHD_RINGBUF_REQUEST_SIZE);
 	response_size = FTHD_S2_MEM_READ(entry + FTHD_RINGBUF_RESPONSE_SIZE);
 
-	/* XXX: response size in the ringbuf is zero after command completion, how is buffer size
-	        verification done? */
+	/*
+	 * FIXME: response size in the ringbuf is zero after command completion,
+	 * how is buffer size verification done?
+	 */
 	if (response_len && *response_len)
 		FTHD_S2_MEMCPY_FROMIO(buf, (address & ~3) + sizeof(struct isp_cmd_hdr),
 				     *response_len);
@@ -356,11 +350,11 @@ int fthd_isp_debug_cmd(struct fthd_private *dev_priv, enum fthd_isp_cmds command
 	}
 	len += sizeof(struct isp_cmd_hdr);
 
-	pr_debug("sending debug cmd %d to firmware\n", command);
+	pr_debug("Sending debug cmd %d to firmware\n", command);
 
 	request = isp_mem_create(dev_priv, FTHD_MEM_CMD, len);
 	if (!request) {
-		dev_err(&dev_priv->pdev->dev, "failed to allocate cmd memory object\n");
+		pr_err("Failed to allocate cmd memory object\n");
 		return -ENOMEM;
 	}
 
@@ -368,10 +362,14 @@ int fthd_isp_debug_cmd(struct fthd_private *dev_priv, enum fthd_isp_cmds command
 
 	FTHD_S2_MEMCPY_TOIO(request->offset, &cmd, sizeof(struct isp_cmd_hdr));
 	if (request_len)
-		FTHD_S2_MEMCPY_TOIO(request->offset + sizeof(struct isp_cmd_hdr), buf, request_len);
+		FTHD_S2_MEMCPY_TOIO(request->offset + sizeof(struct isp_cmd_hdr),
+				    buf, request_len);
 
 	ret = fthd_channel_ringbuf_send(dev_priv, dev_priv->channel_debug,
-					  request->offset, request_len + 8, (response_len ? *response_len : 0) + 8, &entry);
+					request->offset, request_len + 8,
+					(response_len ? *response_len : 0) + 8,
+					&entry);
+
 	if (ret)
 		goto out;
 
@@ -380,26 +378,30 @@ int fthd_isp_debug_cmd(struct fthd_private *dev_priv, enum fthd_isp_cmds command
 		goto out;
 	}
 
-        ret = fthd_channel_wait_ready(dev_priv, dev_priv->channel_debug, entry, 20000);
+        ret = fthd_channel_wait_ready(dev_priv, dev_priv->channel_debug, entry,
+				      20000);
 	if (ret) {
 		if (response_len)
 			*response_len = 0;
 		goto out;
 	}
 
-	FTHD_S2_MEMCPY_FROMIO(&cmd, request->offset, sizeof(struct isp_cmd_hdr));
+	FTHD_S2_MEMCPY_FROMIO(&cmd, request->offset,
+			      sizeof(struct isp_cmd_hdr));
 	address = FTHD_S2_MEM_READ(entry + FTHD_RINGBUF_ADDRESS_FLAGS);
 	request_size = FTHD_S2_MEM_READ(entry + FTHD_RINGBUF_REQUEST_SIZE);
 	response_size = FTHD_S2_MEM_READ(entry + FTHD_RINGBUF_RESPONSE_SIZE);
 
-	/* XXX: response size in the ringbuf is zero after command completion, how is buffer size
-	        verification done? */
+	/*
+ 	 * FIXME: response size in the ringbuf is zero after command completion,
+	 * how is buffer size verification done?
+	 */
 	if (response_len && *response_len)
 		FTHD_S2_MEMCPY_FROMIO(buf, (address & ~3) + sizeof(struct isp_cmd_hdr),
 				     *response_len);
 
-	pr_info("status %04x, request_len %d response len %d address_flags %x\n", cmd.status,
-		request_size, response_size, address);
+	pr_info("status %04x, request_len %d response len %d address_flags %x\n",
+		cmd.status, request_size, response_size, address);
 
 	ret = 0;
 out:
@@ -443,12 +445,6 @@ static int fthd_isp_cmd_powerdown(struct fthd_private *dev_priv)
 	return fthd_isp_cmd(dev_priv, CISP_CMD_POWER_DOWN, NULL, 0, NULL);
 }
 
-static void isp_free_set_file(struct fthd_private *dev_priv)
-{
-	if (dev_priv->set_file)
-		isp_mem_destroy(dev_priv->set_file);
-}
-
 int isp_powerdown(struct fthd_private *dev_priv)
 {
 	int retries;
@@ -465,9 +461,10 @@ int isp_powerdown(struct fthd_private *dev_priv)
 	}
 
 	if (retries >= 100) {
-		dev_info(&dev_priv->pdev->dev, "deinit failed!\n");
+		pr_debug("deinit failed!\n");
 		return -EIO;
 	}
+
 	return 0;
 }
 
@@ -498,7 +495,10 @@ int isp_uninit(struct fthd_private *dev_priv)
 
 	FTHD_ISP_REG_WRITE(0xffffffff, ISP_IRQ_CLEAR);
 	isp_free_channel_info(dev_priv);
-	isp_free_set_file(dev_priv);
+
+	if (dev_priv->set_file)
+		isp_mem_destroy(dev_priv->set_file);
+
 	isp_mem_destroy(dev_priv->firmware);
 	kfree(dev_priv->mem);
 	return 0;
@@ -517,18 +517,14 @@ int fthd_isp_cmd_print_enable(struct fthd_private *dev_priv, int enable)
 int fthd_isp_cmd_set_loadfile(struct fthd_private *dev_priv)
 {
 	struct isp_cmd_set_loadfile cmd;
-	struct isp_mem_obj *file;
+	struct isp_mem_obj *set_file;
 	const struct firmware *fw;
 	const char *filename = NULL;
 	const char *vendor, *board;
 	int ret = 0;
 
-	pr_debug("set loadfile\n");
-
 	vendor = dmi_get_system_info(DMI_BOARD_VENDOR);
 	board = dmi_get_system_info(DMI_BOARD_NAME);
-
-	memset(&cmd, 0, sizeof(cmd));
 
 	switch(dev_priv->sensor_id1) {
 	case 0x164:
@@ -570,33 +566,33 @@ int fthd_isp_cmd_set_loadfile(struct fthd_private *dev_priv)
 		}
 		break;
 	default:
+		pr_debug("Unknown sensor id: %04x %04x\n", dev_priv->sensor_id0,
+			 dev_priv->sensor_id1);
 		break;
-
-	}
-
-	if (!filename) {
-		pr_err("no set file for sensorid %04x %04x found\n",
-		       dev_priv->sensor_id0, dev_priv->sensor_id1);
-		return -EINVAL;
 	}
 
 	/* The set file is allowed to be missing but we don't get calibration */
+	if (!filename)
+		return 0;
+
 	ret = request_firmware(&fw, filename, &dev_priv->pdev->dev);
 	if (ret)
 		return 0;
 
-	/* Firmware memory is preallocated at init time */
-	BUG_ON(dev_priv->set_file);
+	WARN_ON(dev_priv->set_file);
 
-	file = isp_mem_create(dev_priv, FTHD_MEM_SET_FILE, fw->size);
-	FTHD_S2_MEMCPY_TOIO(file->offset, fw->data, fw->size);
+	set_file = isp_mem_create(dev_priv, FTHD_MEM_SET_FILE, fw->size);
+	FTHD_S2_MEMCPY_TOIO(set_file->offset, fw->data, fw->size);
 
 	release_firmware(fw);
 
-	dev_priv->set_file = file;
-	pr_debug("set file: addr %08lx, size %d\n", file->offset, (int)file->size);
-	cmd.addr = file->offset;
-	cmd.length = file->size;
+	dev_priv->set_file = set_file;
+	pr_debug("set file: addr %08lx, size %d\n", set_file->offset, (int)set_file->size);
+
+	memset(&cmd, 0, sizeof(cmd));
+	cmd.addr = set_file->offset;
+	cmd.length = set_file->size;
+
 	return fthd_isp_cmd(dev_priv, CISP_CMD_CH_SET_FILE_LOAD, &cmd, sizeof(cmd), NULL);
 }
 
@@ -1278,7 +1274,6 @@ int isp_init(struct fthd_private *dev_priv)
 	pci_set_power_state(dev_priv->pdev, PCI_D0);
 	mdelay(10);
 
-	isp_enable_sensor(dev_priv);
 	FTHD_ISP_REG_WRITE(0, ISP_FW_CHAN_CTRL);
 	FTHD_ISP_REG_WRITE(0, ISP_FW_QUEUE_CTRL);
 	FTHD_ISP_REG_WRITE(0, ISP_FW_SIZE);
@@ -1290,10 +1285,6 @@ int isp_init(struct fthd_private *dev_priv)
 
 	FTHD_ISP_REG_WRITE(0xffffffff, ISP_IRQ_CLEAR);
 
-	/*
-	 * Probably the IPC queue
-	 * FIXME: Check if we can do 64bit writes on PCIe
-	 */
 	for (i = ISP_FW_CHAN_START; i <= ISP_FW_CHAN_END; i += 8) {
 		FTHD_ISP_REG_WRITE(0xffffffff, i);
 		FTHD_ISP_REG_WRITE(0, i + 4);
@@ -1310,25 +1301,22 @@ int isp_init(struct fthd_private *dev_priv)
 	}
 
 	if (retries >= 1000) {
-		dev_info(&dev_priv->pdev->dev, "Init failed! No wake signal\n");
+		pr_debug("Init failed! No wake signal\n");
 		return -EIO;
 	}
 
-	dev_info(&dev_priv->pdev->dev, "ISP woke up after %dms\n",
-		 (retries - 1) * 10);
+	pr_debug("ISP woke up after %dms\n", (retries - 1) * 10);
 
 	FTHD_ISP_REG_WRITE(0xffffffff, ISP_IRQ_CLEAR);
 
 	num_channels = FTHD_ISP_REG_READ(ISP_FW_CHAN_CTRL);
 	queue_size = FTHD_ISP_REG_READ(ISP_FW_QUEUE_CTRL) + 1;
 
-	dev_info(&dev_priv->pdev->dev,
-		 "Number of IPC channels: %u, queue size: %u\n",
+	pr_debug("Number of IPC channels: %u, queue size: %u\n",
 		 num_channels, queue_size);
 
 	if (num_channels > 32) {
-		dev_info(&dev_priv->pdev->dev, "Too many IPC channels: %u\n",
-			 num_channels);
+		pr_err("Too many IPC channels: %u\n", num_channels);
 		return -EIO;
 	}
 
@@ -1352,13 +1340,12 @@ int isp_init(struct fthd_private *dev_priv)
 		heap_size = (heap_size < 0x1000) ? 0x1000 : heap_size;
 
 		if (heap_size > 0x400000) {
-			dev_info(&dev_priv->pdev->dev,
-				 "Firmware heap request size too big (%ukb)\n",
+			pr_err("Firmware heap request size too big (%ukb)\n",
 				 heap_size / 1024);
 			return -ENOMEM;
 		}
 
-		dev_info(&dev_priv->pdev->dev, "Firmware requested heap size: %ukb\n",
+		pr_debug("Firmware requested heap size: %ukb\n",
 			 heap_size / 1024);
 
 		heap = isp_mem_create(dev_priv, FTHD_MEM_HEAP, heap_size);
@@ -1401,18 +1388,20 @@ int isp_init(struct fthd_private *dev_priv)
 		}
 
 		if (retries >= 1000) {
-			dev_info(&dev_priv->pdev->dev, "Init failed! No second int\n");
+			pr_err("Init failed! No second int\n");
 			return -EIO;
 		} /* FIXME: free on error path */
 
-		dev_info(&dev_priv->pdev->dev, "ISP second int after %dms\n",
-			 (retries - 1) * 10);
+		pr_debug("ISP second init after %dms\n", (retries - 1) * 10);
 
 		offset = FTHD_ISP_REG_READ(ISP_FW_CHAN_CTRL);
-		dev_info(&dev_priv->pdev->dev, "Channel description table at %08x\n", offset);
+		pr_debug("Channel description table at %08x\n", offset);
+
 		ret = isp_fill_channel_info(dev_priv, offset, num_channels);
-		if (ret)
+		if (ret) {
+			pr_err("Failed to fill ISP channel info\n");
 			return ret;
+		}
 
 		fthd_channel_ringbuf_init(dev_priv, dev_priv->channel_terminal);
 		fthd_channel_ringbuf_init(dev_priv, dev_priv->channel_io);
@@ -1432,11 +1421,12 @@ int isp_init(struct fthd_private *dev_priv)
 		}
 
 		if (retries >= 1000) {
-			dev_info(&dev_priv->pdev->dev, "Init failed! No magic value\n");
+			pr_err("Init failed! No magic value\n");
 			isp_uninit(dev_priv);
 			return -EIO;
 		} /* FIXME: free on error path */
-		dev_info(&dev_priv->pdev->dev, "magic value: %08x after %d ms\n", reg, (retries - 1) * 10);
+
+		pr_debug("Magic value: %08x after %d ms\n", reg, (retries - 1) * 10);
 	}
 
 	return 0;

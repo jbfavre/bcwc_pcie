@@ -1,7 +1,8 @@
 /*
  * FacetimeHD camera driver
  *
- * Copyright (C) 2014 Patrik Jakobsson (patrik.r.jakobsson@gmail.com)
+ * Copyright (C) 2014 Patrik Jakobsson <patrik.r.jakobsson@gmail.com>
+ *		 2016 Sven Schnelle <svens@stackframe.org>
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published by
@@ -20,6 +21,15 @@
 #ifndef _FTHD_DRV_H
 #define _FTHD_DRV_H
 
+#define FTHD_PCI_S2_IO  0
+#define FTHD_PCI_S2_MEM 2
+#define FTHD_PCI_ISP_IO 4
+
+#define FTHD_NUM_BUFS 4
+
+#define S2_PAGE_SIZE 4096
+#define S2_PAGE_SHIFT 12
+
 #include <linux/pci.h>
 #include <linux/spinlock.h>
 #include <linux/wait.h>
@@ -31,12 +41,6 @@
 #include "fthd_ringbuf.h"
 #include "fthd_buffer.h"
 #include "fthd_v4l2.h"
-
-#define FTHD_PCI_S2_IO  0
-#define FTHD_PCI_S2_MEM 2
-#define FTHD_PCI_ISP_IO 4
-
-#define FTHD_BUFFERS 4
 
 enum FW_CHAN_TYPE {
 	FW_CHAN_TYPE_OUT=0,
@@ -118,10 +122,7 @@ struct fthd_private {
 	struct vb2_queue vb2_queue;
 	struct mutex vb2_queue_lock;
 	struct list_head buffer_queue;
-#if LINUX_VERSION_CODE < KERNEL_VERSION(4,8,0)
-	struct vb2_alloc_ctx *alloc_ctx;
-#endif
-	struct h2t_buf_ctx h2t_bufs[FTHD_BUFFERS];
+	struct h2t_buf_ctx h2t_bufs[FTHD_NUM_BUFS];
 
 	struct v4l2_ctrl_handler v4l2_ctrl_handler;
 	int frametime;

@@ -1,7 +1,8 @@
 /*
- * Broadcom PCIe 1570 webcam driver
+ * FacetimeHD camera driver
  *
- * Copyright (C) 2014 Patrik Jakobsson (patrik.r.jakobsson@gmail.com)
+ * Copyright (C) 2014 Patrik Jakobsson <patrik.r.jakobsson@gmail.com>
+ *		 2016 Sven Schnelle <svens@stackframe.org>
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published by
@@ -467,7 +468,8 @@ enum isp_debug_cmds {
 	CISP_CMD_DEBUG_GET_FSM_BY_NAME,
 	CISP_CMD_DEBUG_GET_FSM_DEBUG_LEVEL,
 	CISP_CMD_DEBUG_SET_FSM_DEBUG_LEVEL,
-	CISP_CMD_DEBUG_FSM_UNKNOWN, /* XXX: don't know what this cmd is doing yet */
+	/* FIXME: don't know what this cmd is doing yet */
+	CISP_CMD_DEBUG_FSM_UNKNOWN,
 	CISP_CMD_DEBUG_HEAP_STATISTICS,
 	CISP_CMD_DEBUG_IRQ_STATISTICS,
 	CISP_CMD_DEBUG_SHOW_SEMAPHORE_STATUS,
@@ -493,7 +495,7 @@ struct isp_fw_args {
 };
 
 struct isp_channel_info {
-	char name[64]; /* really that big? */
+	char name[64];
 	u32 type;
 	u32 source;
 	u32 size;
@@ -511,14 +513,7 @@ struct isp_cmd_print_enable {
 } __attribute__((packed));
 
 struct isp_cmd_config {
-	u32 field0;
-	u32 field4;
-	u32 field8;
-	u32 fieldc;
-	u32 field10;
-	u32 field14;
-	u32 field18;
-	u32 field1c;
+	u32 unknown[8];
 } __attribute__((packed));
 
 struct isp_cmd_set_loadfile {

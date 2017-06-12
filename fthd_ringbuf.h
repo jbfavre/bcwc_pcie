@@ -1,7 +1,8 @@
 /*
- * Broadcom PCIe 1570 webcam driver
+ * FacetimeHD camera driver
  *
  * Copyright (C) 2015 Sven Schnelle <svens@stackframe.org>
+ *		 2016 Patrik Jakobsson <patrik.r.jakobsson@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published by
@@ -21,6 +22,9 @@
 #define _FTHD_RINGBUF_H
 
 #define FTHD_RINGBUF_ENTRY_SIZE 64
+
+#define FTHD_ENTRY_ADDR(chan, num) \
+	(chan)->offset + (num) * FTHD_RINGBUF_ENTRY_SIZE
 
 #define FTHD_RINGBUF_ADDRESS_FLAGS 0
 #define FTHD_RINGBUF_REQUEST_SIZE 4
@@ -49,6 +53,5 @@ extern u32 fthd_channel_ringbuf_receive(struct fthd_private *dev_priv,
 					struct fw_channel *chan);
 
 extern int fthd_channel_wait_ready(struct fthd_private *dev_priv, struct fw_channel *chan, u32 entry, int timeout);
-extern u32 get_entry_addr(struct fthd_private *dev_priv,
-			  struct fw_channel *chan, int num);
+
 #endif

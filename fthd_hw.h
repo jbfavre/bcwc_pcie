@@ -1,7 +1,8 @@
 /*
- * Broadcom PCIe 1570 webcam driver
+ * FacetimeHD camera driver
  *
- * Copyright (C) 2014 Patrik Jakobsson (patrik.r.jakobsson@gmail.com)
+ * Copyright (C) 2014 Patrik Jakobsson <patrik.r.jakobsson@gmail.com>
+ *		 2016 Sven Schnelle <svens@stackframe.org>
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published by
@@ -42,12 +43,10 @@ static inline void fthd_hw_pci_post(struct fthd_private *dev_priv)
 static inline u32 _FTHD_S2_REG_READ(struct fthd_private *dev_priv, u32 offset)
 {
 	if (offset >= dev_priv->s2_io_len) {
-		dev_err(&dev_priv->pdev->dev,
-			"S2 IO read out of range at %u\n", offset);
+		pr_err("S2 IO read out of range at %u\n", offset);
 		return 0;
 	}
 
-	// dev_info(&dev_priv->pdev->dev, "Link IO read at %u\n", offset);
 	return ioread32(dev_priv->s2_io + offset);
 }
 
@@ -55,12 +54,10 @@ static inline void _FTHD_S2_REG_WRITE(struct fthd_private *dev_priv, u32 val,
 				      u32 offset)
 {
 	if (offset >= dev_priv->s2_io_len) {
-		dev_err(&dev_priv->pdev->dev,
-			"S2 IO write out of range at %u\n", offset);
+		pr_err("S2 IO write out of range at %u\n", offset);
 		return;
 	}
 
-	// dev_info(&dev_priv->pdev->dev, "S2 IO write at %u\n", offset);
 	iowrite32(val, dev_priv->s2_io + offset);
 	fthd_hw_pci_post(dev_priv);
 }
@@ -68,12 +65,10 @@ static inline void _FTHD_S2_REG_WRITE(struct fthd_private *dev_priv, u32 val,
 static inline u32 _FTHD_S2_MEM_READ(struct fthd_private *dev_priv, u32 offset)
 {
 	if (offset >= dev_priv->s2_mem_len) {
-		dev_err(&dev_priv->pdev->dev,
-			"S2 MEM read out of range at %u\n", offset);
+		pr_err("S2 MEM read out of range at %u\n", offset);
 		return 0;
 	}
 
-	// dev_info(&dev_priv->pdev->dev, "Link IO read at %u\n", offset);
 	return ioread32(dev_priv->s2_mem + offset);
 }
 
@@ -81,12 +76,10 @@ static inline void _FTHD_S2_MEM_WRITE(struct fthd_private *dev_priv, u32 val,
 				      u32 offset)
 {
 	if (offset >= dev_priv->s2_mem_len) {
-		dev_err(&dev_priv->pdev->dev,
-			"S2 MEM write out of range at %u\n", offset);
+		pr_err("S2 MEM write out of range at %u\n", offset);
 		return;
 	}
 
-	// dev_info(&dev_priv->pdev->dev, "S2 IO write at %u\n", offset);
 	iowrite32(val, dev_priv->s2_mem + offset);
 }
 
@@ -106,12 +99,10 @@ static inline void _FTHD_S2_MEMCPY_FROMIO(struct fthd_private *dev_priv, void *b
 static inline u32 _FTHD_ISP_REG_READ(struct fthd_private *dev_priv, u32 offset)
 {
 	if (offset >= dev_priv->isp_io_len) {
-		dev_err(&dev_priv->pdev->dev,
-			"ISP IO read out of range at %u\n", offset);
+		pr_err("ISP IO read out of range at %u\n", offset);
 		return 0;
 	}
 
-	// dev_info(&dev_priv->pdev->dev, "ISP IO read at %u\n", offset);
 	return ioread32(dev_priv->isp_io + offset);
 }
 
@@ -119,12 +110,10 @@ static inline void _FTHD_ISP_REG_WRITE(struct fthd_private *dev_priv, u32 val,
 				       u32 offset)
 {
 	if (offset >= dev_priv->isp_io_len) {
-		dev_err(&dev_priv->pdev->dev,
-			"ISP IO write out of range at %u\n", offset);
+		pr_err("ISP IO write out of range at %u\n", offset);
 		return;
 	}
 
-	// dev_info(&dev_priv->pdev->dev, "Dev IO write at %u\n", offset);
 	iowrite32(val, dev_priv->isp_io + offset);
 	fthd_hw_pci_post(dev_priv);
 }

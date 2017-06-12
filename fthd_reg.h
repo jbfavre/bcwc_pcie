@@ -1,7 +1,8 @@
 /*
- * Broadcom PCIe 1570 webcam driver
+ * FacetimeHD camera driver
  *
- * Copyright (C) 2014 Patrik Jakobsson (patrik.r.jakobsson@gmail.com)
+ * Copyright (C) 2014 Patrik Jakobsson <patrik.r.jakobsson@gmail.com>
+ *		 2016 Sven Schnelle <svens@stackframe.org>
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published by
@@ -171,6 +172,8 @@ static const u32 fthd_ddr_phy_reg_map[] = {
 #define S2_3200				0x3200
 #define S2_3204				0x3204
 #define S2_3208				0x3208
+
+#define S2_IOMMU_BASE_ADDR		0x9000
 
 /* On iomem with pointer at 0x0ff0 (Bar 4: 1MB) */
 #define ISP_FW_CHAN_CTRL	0xc3000

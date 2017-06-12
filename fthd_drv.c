@@ -1,7 +1,8 @@
 /*
  * FacetimeHD camera driver
  *
- * Copyright (C) 2014 Patrik Jakobsson (patrik.r.jakobsson@gmail.com)
+ * Copyright (C) 2014 Patrik Jakobsson <patrik.r.jakobsson@gmail.com>
+ *		 2016 Sven Schnelle <svens@stackframe.org>
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published by
@@ -45,13 +46,13 @@ static int fthd_pci_reserve_mem(struct fthd_private *dev_priv)
 	/* Reserve resources */
 	ret = pci_request_region(dev_priv->pdev, FTHD_PCI_S2_IO, "S2 IO");
 	if (ret) {
-		dev_err(&dev_priv->pdev->dev, "Failed to request S2 IO\n");
+		pr_err("Failed to request S2 IO\n");
 		return ret;
 	}
 
 	ret = pci_request_region(dev_priv->pdev, FTHD_PCI_ISP_IO, "ISP IO");
 	if (ret) {
-		dev_err(&dev_priv->pdev->dev, "Failed to request ISP IO\n");
+		pr_err("Failed to request ISP IO\n");
 		pci_release_region(dev_priv->pdev, FTHD_PCI_S2_IO);
 		return ret;
 	}
@@ -120,16 +121,17 @@ static void sharedmalloc_handler(struct fthd_private *dev_priv,
 		if (!obj)
 			return;
 
-		pr_debug("Firmware allocated %d bytes at %08lx (tag %c%c%c%c)\n", request_size, obj->offset,
+		pr_debug("Firmware allocated %d bytes at %08lx (tag %c%c%c%c)\n",
+			 request_size, obj->offset,
 			 response_size >> 24,response_size >> 16,
 			 response_size >> 8, response_size);
 		FTHD_S2_MEMCPY_TOIO(obj->offset, &obj, sizeof(obj));
-		ret = fthd_channel_ringbuf_send(dev_priv, chan, obj->offset + 64, 0, 0, NULL);
+		ret = fthd_channel_ringbuf_send(dev_priv, chan,
+						obj->offset + 64, 0, 0, NULL);
 		if (ret)
 			pr_err("%s: fthd_channel_ringbuf_send: %d\n", __FUNCTION__, ret);
 
 	}
-
 }
 
 
@@ -150,7 +152,7 @@ static void terminal_handler(struct fthd_private *dev_priv,
 	if (request_size > 512)
 		request_size = 512;
 	FTHD_S2_MEMCPY_FROMIO(buf, address, request_size);
-	pr_info("FWMSG: %.*s", request_size, buf);
+	pr_debug("FWMSG: %.*s", request_size, buf);
 }
 
 static void buf_t2h_handler(struct fthd_private *dev_priv,
@@ -208,8 +210,7 @@ static void fthd_handle_irq(struct fthd_private *dev_priv, struct fw_channel *ch
 		return;
 	}
 
-	while((entry = fthd_channel_ringbuf_receive(dev_priv, chan)) != (u32)-1) {
-		pr_debug("channel %s: message available, address %08x\n", chan->name, FTHD_S2_MEM_READ(entry + FTHD_RINGBUF_ADDRESS_FLAGS));
+	while ((entry = fthd_channel_ringbuf_receive(dev_priv, chan)) != (u32)-1) {
 		if (chan == dev_priv->channel_shared_malloc) {
 			sharedmalloc_handler(dev_priv, chan, entry);
 		} else if (chan == dev_priv->channel_terminal) {
@@ -238,7 +239,7 @@ static void fthd_irq_work(struct work_struct *work)
 	u32 pending;
 	int i = 0;
 
-	while(i++ < 500) {
+	while (i++ < 500) {
 		spin_lock_irq(&dev_priv->io_lock);
 		pending = FTHD_ISP_REG_READ(ISP_IRQ_STATUS);
 		spin_unlock_irq(&dev_priv->io_lock);
@@ -252,11 +253,10 @@ static void fthd_irq_work(struct work_struct *work)
 		spin_unlock_irq(&dev_priv->io_lock);
 		pci_write_config_dword(dev_priv->pdev, 0x90, 0x200);
 
-		for(i = 0; i < dev_priv->num_channels; i++) {
+		for (i = 0; i < dev_priv->num_channels; i++) {
 			chan = dev_priv->channels[i];
 
-
-			BUG_ON(chan->source > 3);
+			WARN_ON(chan->source > 3);
 			if (!((0x10 << chan->source) & pending))
 				continue;
 			fthd_handle_irq(dev_priv, chan);
@@ -264,7 +264,7 @@ static void fthd_irq_work(struct work_struct *work)
 	}
 
 	if (i >= 500) {
-		dev_err(&dev_priv->pdev->dev, "irq stuck, disabling\n");
+		pr_err("irq stuck, disabling\n");
 		fthd_irq_uninstall(dev_priv);
 	}
 	pci_write_config_dword(dev_priv->pdev, 0x94, 0x200);
@@ -296,7 +296,7 @@ static int fthd_irq_install(struct fthd_private *dev_priv)
 			  KBUILD_MODNAME, (void *)dev_priv);
 
 	if (ret)
-		dev_err(&dev_priv->pdev->dev, "Failed to request IRQ\n");
+		pr_err("Failed to request IRQ\n");
 
 	return ret;
 }
@@ -308,7 +308,7 @@ static int fthd_pci_set_dma_mask(struct fthd_private *dev_priv,
 
 	ret = dma_set_mask_and_coherent(&dev_priv->pdev->dev, DMA_BIT_MASK(mask));
 	if (ret) {
-		dev_err(&dev_priv->pdev->dev, "Failed to set %u pci dma mask\n",
+		pr_err("Failed to set %u pci dma mask\n",
 			mask);
 		return ret;
 	}
@@ -320,7 +320,7 @@ static int fthd_pci_set_dma_mask(struct fthd_private *dev_priv,
 
 static void fthd_stop_firmware(struct fthd_private *dev_priv)
 {
-		fthd_isp_cmd_stop(dev_priv);
+	fthd_isp_cmd_stop(dev_priv);
 	isp_powerdown(dev_priv);
 }
 
@@ -369,10 +369,9 @@ static int fthd_pci_init(struct fthd_private *dev_priv)
 	struct pci_dev *pdev = dev_priv->pdev;
 	int ret;
 
-
 	ret = pci_enable_device(pdev);
 	if (ret) {
-		dev_err(&pdev->dev, "Failed to enable device\n");
+		pr_err("Failed to enable device\n");
 		return ret;
 	}
 
@@ -382,7 +381,7 @@ static int fthd_pci_init(struct fthd_private *dev_priv)
 
 	ret = pci_enable_msi(pdev);
 	if (ret) {
-		dev_err(&pdev->dev, "Failed to enable MSI\n");
+		pr_err("Failed to enable MSI\n");
 		goto fail_reserve;
 	}
 
@@ -397,7 +396,7 @@ static int fthd_pci_init(struct fthd_private *dev_priv)
 	if (ret)
 		goto fail_irq;
 
-	dev_info(&pdev->dev, "Setting %ubit DMA mask\n", dev_priv->dma_mask);
+	pr_debug("Setting %ubit DMA mask\n", dev_priv->dma_mask);
 	pci_set_consistent_dma_mask(pdev, DMA_BIT_MASK(dev_priv->dma_mask));
 
 	pci_set_master(pdev);
@@ -438,7 +437,6 @@ static int fthd_firmware_start(struct fthd_private *dev_priv)
 		return ret;
 
 	return fthd_isp_cmd_set_loadfile(dev_priv);
-
 }
 
 static int fthd_pci_probe(struct pci_dev *pdev,
@@ -447,12 +445,11 @@ static int fthd_pci_probe(struct pci_dev *pdev,
 	struct fthd_private *dev_priv;
 	int ret;
 
-	dev_info(&pdev->dev, "Found FaceTime HD camera with device id: %x\n",
-		 pdev->device);
+	pr_info("Found FaceTime HD camera with device id: %x\n", pdev->device);
 
 	dev_priv = kzalloc(sizeof(struct fthd_private), GFP_KERNEL);
 	if (!dev_priv) {
-		dev_err(&pdev->dev, "Failed to allocate memory\n");
+		pr_err("Failed to allocate memory\n");
 		return -ENOMEM;
 	}
 
@@ -473,13 +470,13 @@ static int fthd_pci_probe(struct pci_dev *pdev,
 	if (ret)
 		goto fail_work;
 
-	ret = fthd_buffer_init(dev_priv);
-	if (ret)
-		goto fail_pci;
-
 	ret = fthd_hw_init(dev_priv);
 	if (ret)
 		goto fail_buffer;
+
+	ret = fthd_buffer_init(dev_priv);
+	if (ret)
+		goto fail_pci;
 
 	ret = fthd_firmware_start(dev_priv);
 	if (ret)
@@ -493,6 +490,7 @@ static int fthd_pci_probe(struct pci_dev *pdev,
 	if (ret)
 		goto fail_v4l2;
 	return 0;
+
 fail_v4l2:
 	fthd_v4l2_unregister(dev_priv);
 fail_firmware:

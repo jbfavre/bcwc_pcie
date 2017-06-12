@@ -2,6 +2,7 @@
  * FacetimeHD camera driver
  *
  * Copyright (C) 2015 Sven Schnelle <svens@stackframe.org>
+ *		 2016 Patrik Jakobsson <patrik.r.jakobsson@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published by
@@ -70,7 +71,8 @@ static ssize_t fthd_store_debug(struct file *file, const char __user *user_buf,
 		opcode = CISP_CMD_DEBUG_GET_DEBUG_LEVEL;
 	else if (sscanf(buf, "set_debug_level %x %i", &cmd.arg[0], &cmd.arg[1]) == 2)
 		opcode = CISP_CMD_DEBUG_SET_DEBUG_LEVEL;
-	else if (sscanf(buf, "set_debug_level_rec %x %i", &cmd.arg[0], &cmd.arg[1]) == 2)
+	else if (sscanf(buf, "set_debug_level_rec %x %i", &cmd.arg[0],
+			&cmd.arg[1]) == 2)
 		opcode = CISP_CMD_DEBUG_SET_DEBUG_LEVEL_RECURSIVE;
 	else if (!strcmp(buf, "get_fsm_count"))
 		opcode = CISP_CMD_DEBUG_GET_FSM_COUNT;
@@ -82,9 +84,9 @@ static ssize_t fthd_store_debug(struct file *file, const char __user *user_buf,
 		opcode = CISP_CMD_DEBUG_GET_FSM_DEBUG_LEVEL;
 	else if (sscanf(buf, "set_fsm_debug_level %x", &cmd.arg[0]) == 2)
 		opcode = CISP_CMD_DEBUG_SET_FSM_DEBUG_LEVEL;
-
 	else if (sscanf(buf, "%i %i\n", &opcode, &cmd.arg[0]) != 2)
 		return -EINVAL;
+
 	cmd.show_errors = 1;
 
 	ret = fthd_isp_debug_cmd(dev_priv, opcode, &cmd, sizeof(cmd), NULL);
@@ -94,22 +96,22 @@ static ssize_t fthd_store_debug(struct file *file, const char __user *user_buf,
 	return count;
 }
 
-
 static int seq_channel_read(struct seq_file *seq, struct fthd_private *dev_priv,
-			struct fw_channel *chan)
+			    struct fw_channel *chan)
 {
 	int i;
 	char pos;
 	u32 entry;
 
 	spin_lock_irq(&chan->lock);
-	for( i = 0; i < chan->size; i++) {
+	for (i = 0; i < chan->size; i++) {
 		if (chan->ringbuf.idx == i)
 			pos = '*';
 		else
 			pos = ' ';
-		entry = get_entry_addr(dev_priv, chan, i);
-		seq_printf(seq, "%c%3.3d: ADDRESS %08x REQUEST_SIZE %08x RESPONSE_SIZE %08x\n",
+		entry = FTHD_ENTRY_ADDR(chan, i);
+		seq_printf(seq,
+			   "%c%3.3d: ADDRESS %08x REQUEST_SIZE %08x RESPONSE_SIZE %08x\n",
 			   pos, i,
 			   FTHD_S2_MEM_READ(entry + FTHD_RINGBUF_ADDRESS_FLAGS),
 			   FTHD_S2_MEM_READ(entry + FTHD_RINGBUF_REQUEST_SIZE),
@@ -190,14 +192,28 @@ int fthd_debugfs_init(struct fthd_private *dev_priv)
 		return PTR_ERR(d);
 	}
 
-	debugfs_create_devm_seqfile(&dev_priv->pdev->dev, "channel_terminal", d, seq_channel_terminal_read);
-	debugfs_create_devm_seqfile(&dev_priv->pdev->dev, "channel_sharedmalloc", d, seq_channel_sharedmalloc_read);
-	debugfs_create_devm_seqfile(&dev_priv->pdev->dev, "channel_io", d, seq_channel_io_read);
-	debugfs_create_devm_seqfile(&dev_priv->pdev->dev, "channel_io_t2h", d, seq_channel_io_t2h_read);
-	debugfs_create_devm_seqfile(&dev_priv->pdev->dev, "channel_buf_h2t", d, seq_channel_buf_h2t_read);
-	debugfs_create_devm_seqfile(&dev_priv->pdev->dev, "channel_buf_t2h", d, seq_channel_buf_t2h_read);
-	debugfs_create_devm_seqfile(&dev_priv->pdev->dev, "channel_debug", d, seq_channel_debug_read);
-	debugfs_create_file("debug", S_IRUSR | S_IWUSR, d, dev_priv, &fops_debug);
+	debugfs_create_devm_seqfile(&dev_priv->pdev->dev,
+				    "channel_terminal", d,
+				    seq_channel_terminal_read);
+	debugfs_create_devm_seqfile(&dev_priv->pdev->dev,
+				    "channel_sharedmalloc",
+				    d, seq_channel_sharedmalloc_read);
+	debugfs_create_devm_seqfile(&dev_priv->pdev->dev,
+				    "channel_io", d, seq_channel_io_read);
+	debugfs_create_devm_seqfile(&dev_priv->pdev->dev,
+				    "channel_io_t2h", d,
+				    seq_channel_io_t2h_read);
+	debugfs_create_devm_seqfile(&dev_priv->pdev->dev,
+				    "channel_buf_h2t", d,
+				    seq_channel_buf_h2t_read);
+	debugfs_create_devm_seqfile(&dev_priv->pdev->dev,
+				    "channel_buf_t2h", d,
+				    seq_channel_buf_t2h_read);
+	debugfs_create_devm_seqfile(&dev_priv->pdev->dev,
+				    "channel_debug", d,
+				    seq_channel_debug_read);
+	debugfs_create_file("debug", S_IRUSR | S_IWUSR, d, dev_priv,
+			    &fops_debug);
 	dev_priv->debugfs = top;
 	return 0;
 }
