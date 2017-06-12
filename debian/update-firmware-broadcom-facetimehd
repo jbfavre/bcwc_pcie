@@ -1,0 +1,417 @@
+#!/bin/sh
+
+# Copyright (C) 2005-2016 Jean Baptiste Favre <debian@jbfavre.org>
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License version 2 as
+# published by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+set -e
+
+return_0() {
+	return 0
+}
+
+trap "return_0" 0
+
+die_hard() {
+	echo "ERROR: $1" >&2
+	echo "More information might be available at:" >&2
+	echo "  http://wiki.debian.org/FlashPlayer" >&2
+	exit 1
+}
+
+[ `whoami` = "root" ] || die_hard "must be root"
+
+show_usage() {
+	echo "Usage:"
+	echo "  $0 --install"
+	echo "  $0 --uninstall"
+	echo "  $0 --status"
+	echo "Additional options:"
+	echo "  --verbose"
+	echo "  --quiet"
+	exit 1
+}
+
+getopt_temp=`getopt -o iusfvqn --long install,uninstall,status,fast,verbose,quiet -n update-firmware-broadcom-facetimehd'' -- "$@"` || show_usage
+eval set -- "$getopt_temp" || show_usage
+
+ACTION=none
+fast=no
+verbose=no
+quiet=no
+
+if [ -e /proc/cpuinfo ]
+then
+	hassse2=yes
+	grep -q "^flags.*: .* sse2 " /proc/cpuinfo || grep -q "^flags.*: .* sse2$" /proc/cpuinfo || hassse2=no
+else
+	hassse2=unknown
+fi
+
+while [ true ]
+do
+	case "$1" in
+		-i|--install)
+			ACTION="--install"
+			shift
+			;;
+		-u|--uninstall)
+			ACTION="--uninstall"
+			shift
+			;;
+		-s|--status)
+			ACTION="--status"
+			shift
+			;;
+		-f|--fast)
+			fast=yes
+			shift
+			;;
+		-v|--verbose)
+			verbose=yes
+			shift
+			;;
+		-q|--quiet)
+			quiet=yes
+			shift
+			;;
+		--)
+			shift
+			break
+			;;
+		*)
+			echo "Internal error!" >&2
+			exit 1
+			;;
+	esac
+done
+
+[ "$ACTION" != "none" -a $# -eq 0 ] || show_usage
+[ "$quiet" != "yes" ] || verbose=no
+
+[ "$verbose" != "yes" ] || echo "options : $getopt_temp"
+
+UNPACKDIR=`mktemp -d /tmp/firmware-broadcom-facetimehd.XXXXXXXXXX` || die_hard "mktemp failed"
+echo "$UNPACKDIR" | grep -q "^/tmp/firmware-broadcom-facetimehd\." || die_hard "paranoia"
+cd "$UNPACKDIR" || die_hard "cd failed"
+
+[ "$verbose" != "yes" ] || echo "temporary directory: $UNPACKDIR"
+
+do_cleanup() {
+	[ "$verbose" != "yes" ] || echo "cleaning up temporary directory $UNPACKDIR ..."
+	cd /
+	echo "$UNPACKDIR" | grep -q "^/tmp/firmware-broadcom-facetimehd\." || die_hard "paranoia"
+	rm -rf "$UNPACKDIR"
+}
+
+die_hard_with_a_cleanup() {
+	return_0
+	do_cleanup
+	die_hard "$1"
+}
+
+trap "die_hard_with_a_cleanup interrupted" INT
+
+cachedir=/var/cache/firmware-broadcom-facetimehd
+
+wgetquiet=' -nv -q '
+wgetfast='-t 3 -T 15 '
+wgetalways=' -nd -P . '
+wgetprogress=' -v --progress=dot:default '
+
+[ "$verbose" != "yes" ] || echo "importing public key ..."
+gpg -q --homedir "." --import /usr/lib/flashplugin-nonfree/pubkey.asc > /dev/null 2>&1 \
+	|| die_hard_with_a_cleanup "gpg failed to import /usr/lib/flashplugin-nonfree/pubkey.asc"
+
+get_installed_version() {
+
+	installed=`strings /usr/lib/flashplugin-nonfree/libflashplayer.so 2> /dev/null | grep LNX | cut -d ' ' -f 2 | sed -e "s/,/./g"`
+}
+
+get_upstream_version() {
+
+	arch_wget=i686
+	[ `dpkg --print-architecture` != "amd64" ] || arch_wget=x86_64
+
+	upstream=""
+
+	if [ -f $cachedir/get-upstream-version.pl ]
+	then
+		cp $cachedir/get-upstream-version.pl .
+		upstream=`perl get-upstream-version.pl $arch_wget 2> /dev/null` || true
+
+		if [ "$upstream" = "" ]
+		then
+			rm -f get-upstream-version.pl
+			rm -f $cachedir/get-upstream-version.pl
+		fi
+	fi
+
+	if [ "$upstream" = "" ]
+	then
+		wgetoptions="$wgetquiet $wgetalways"
+		downloadurl=http://people.debian.org/~bartm/flashplugin-nonfree/D5C0FC14/get-upstream-version.pl.gz.pgp
+
+		HOME=/root \
+		wget $wgetoptions $downloadurl \
+			|| die_hard_with_a_cleanup "wget failed to download $downloadurl"
+
+		gpg -q --homedir "." --verify get-upstream-version.pl.gz.pgp 2> /dev/null \
+			|| die_hard_with_a_cleanup "gpg rejected signature of get-upstream-version.pl.gz.pgp"
+		gpg -q --homedir "." < get-upstream-version.pl.gz.pgp > get-upstream-version.pl.gz 2> /dev/null \
+			|| die_hard_with_a_cleanup "gpg rejected signature of get-upstream-version.pl.gz.pgp"
+
+		gunzip get-upstream-version.pl.gz \
+			|| die_hard_with_a_cleanup "failed to gunzip get-upstream-version.pl.gz"
+
+		upstream=`perl get-upstream-version.pl $arch_wget` \
+			|| die_hard_with_a_cleanup "failed to get upstream version"
+
+		cp get-upstream-version.pl $cachedir
+	fi
+}
+
+remove_extrafiles() {
+
+	[ -e /var/lib/flashplugin-nonfree/extrafiles.md5sums ] || touch /var/lib/flashplugin-nonfree/extrafiles.md5sums
+
+	while read line
+	do
+		sourcefile=`echo $line|cut -d ' ' -f 2`
+		targetfile="/$sourcefile"
+
+		if [ ! -f $targetfile ]
+		then
+			echo "not found: $targetfile" >&2
+		else
+			cd /
+			calculated=`md5sum $sourcefile`
+			cd - > /dev/null
+
+			if [ "$line" != "$calculated" ]
+			then
+				echo "not removing modified $targetfile" >&2
+			else
+				[ "$verbose" != "yes" ] || echo "removing $targetfile"
+
+				rm -f $targetfile
+			fi
+		fi
+
+	done < /var/lib/flashplugin-nonfree/extrafiles.md5sums
+
+	rm -f /var/lib/flashplugin-nonfree/extrafiles.md5sums
+}
+
+case "$ACTION" in
+
+	--install)
+		[ "$verbose" != "yes" ] || echo "selected action = $ACTION"
+
+		get_installed_version
+		[ "$verbose" != "yes" ] || echo "installed version = $installed"
+
+		get_upstream_version
+		[ "$verbose" != "yes" ] || echo "upstream version = $upstream"
+
+		if [ "$installed" != "" -a "$upstream" != "" -a "$installed" = "$upstream" ]
+		then
+
+			[ "$verbose" != "yes" ] || echo "upstream version $upstream is already installed"
+
+		elif [ "$hassse2" = "no" ]
+		then
+
+			echo "Version $upstream needs sse2 and this system doesn't have that." >&2
+
+		else
+			wgetoptions="$wgetquiet $wgetalways"
+			[ "$verbose" != "yes" ] || wgetoptions="$wgetalways $wgetprogress"
+			[ "$fast" != "yes" ] || wgetoptions="$wgetoptions $wgetfast"
+			[ "$verbose" != "yes" ] || echo "wgetoptions=$wgetoptions"
+
+			downloadfile=fp.$upstream.sha512.i386.pgp.asc
+			[ `dpkg --print-architecture` != "amd64" ] || downloadfile=fp.$upstream.sha512.amd64.pgp.asc
+			downloadurl=http://people.debian.org/~bartm/flashplugin-nonfree/D5C0FC14/$downloadfile
+
+			[ "$verbose" != "yes" ] || echo "downloading $downloadurl ..."
+			HOME=/root \
+			wget $wgetoptions $downloadurl \
+				|| [ "$verbose" != "yes" ] || echo "wget failed to download $downloadurl" >&2
+
+			if [ ! -e $downloadfile ]
+			then
+				downloadfile=fp10.sha512.i386.pgp.asc
+				[ `dpkg --print-architecture` != "amd64" ] || downloadfile=fp10.sha512.amd64.pgp.asc
+				downloadurl=http://people.debian.org/~bartm/flashplugin-nonfree/D5C0FC14/$downloadfile
+
+				[ "$verbose" != "yes" ] || echo "downloading $downloadurl ..."
+				HOME=/root \
+				wget $wgetoptions $downloadurl \
+					|| die_hard_with_a_cleanup "wget failed to download $downloadurl"
+			fi
+
+			[ "$verbose" != "yes" ] || echo "verifying PGP $downloadfile ..."
+			gpg -q --homedir "." --verify $downloadfile 2> /dev/null \
+				|| die_hard_with_a_cleanup "gpg rejected signature of $downloadurl"
+			gpg -q --homedir "." < $downloadfile > checksums.txt 2> /dev/null \
+				|| die_hard_with_a_cleanup "gpg rejected signature of $downloadurl"
+
+			downloadfile=`head -n 1 < checksums.txt | cut -c 131-`
+
+			[ "$verbose" != "yes" ] || [ ! -f $cachedir/$downloadfile ] || echo "copying $cachedir/$downloadfile ..."
+			[ ! -f $cachedir/$downloadfile ] || cp -p $cachedir/$downloadfile .
+			[ "$verbose" != "yes" ] || [ ! -f $downloadfile ] || echo "verifying checksum $downloadfile ..."
+			[ ! -f $downloadfile ] || grep $downloadfile checksums.txt | sha512sum -c - > /dev/null 2>&1 || rm -f $downloadfile
+
+			downloaddir=`tail -n 1 < checksums.txt`
+			downloadurl=$downloaddir/$downloadfile
+
+			wgetoptions="$wgetalways $wgetprogress"
+			[ "$quiet" != "yes" ] || wgetoptions="$wgetquiet $wgetalways"
+			[ "$fast" != "yes" ] || wgetoptions="$wgetoptions $wgetfast"
+			wgetoptions="$wgetoptions -O $UNPACKDIR/$downloadfile" # to change wget's message "Saving to: ..."
+			[ "$verbose" != "yes" ] || echo "wgetoptions=$wgetoptions"
+
+			[ "$verbose" != "yes" ] || [ ! -f $downloadfile ] || echo "downloading $downloadurl ..."
+			[ -f $downloadfile ] || \
+			HOME=/root \
+			wget $wgetoptions $downloadurl \
+				|| die_hard_with_a_cleanup "wget failed to download $downloadurl"
+			[ "$verbose" != "yes" ] || echo "verifying checksum $downloadfile ..."
+			grep tar.gz checksums.txt | sha512sum -c - > /dev/null 2>&1 \
+				|| die_hard_with_a_cleanup "sha512sum rejected $downloadfile"
+			[ "$verbose" != "yes" ] || echo "unpacking $downloadfile ..."
+			tar xozf $downloadfile
+			[ "$verbose" != "yes" ] || echo "verifying checksum contents of $downloadfile ..."
+			head -n 2 < checksums.txt | sha512sum -c - > /dev/null 2>&1 \
+				|| die_hard_with_a_cleanup "sha512sum rejected a part of $downloadfile"
+
+			targetdir=/usr/lib/flashplugin-nonfree
+			libflashplayerdotso=`grep "  .*libflashplayer\.so$" checksums.txt | cut -c 131-`
+
+			[ "$verbose" != "yes" ] || echo "moving $libflashplayerdotso to $targetdir ..."
+			rm -f $targetdir/flashplayer.xpt
+			mv -f $libflashplayerdotso $targetdir
+
+			[ "$verbose" != "yes" ] || echo "setting permissions and ownership of $targetdir/libflashplayer.so ..."
+			chown root:root $targetdir/libflashplayer.so
+			chmod 644 $targetdir/libflashplayer.so
+
+			[ "$verbose" != "yes" ] || ( get_installed_version && echo "Flash Player version: $installed" )
+
+			[ "$verbose" != "yes" ] || echo "moving $downloadfile to $cachedir ..."
+			mv -f $downloadfile $cachedir
+
+			fix_missing_symlink || true
+
+			[ "$verbose" != "yes" ] || \
+			update-alternatives --display flash-mozilla.so || true
+
+			[ "$verbose" != "yes" ] || echo "calling update-alternatives ..."
+			update-alternatives --quiet --install \
+				/usr/lib/mozilla/plugins/flash-mozilla.so flash-mozilla.so \
+				/usr/lib/flashplugin-nonfree/libflashplayer.so 50 \
+				|| die_hard_with_a_cleanup "update-alternatives failed to install flash-mozilla.so"
+
+			[ "$verbose" != "yes" ] || \
+			update-alternatives --display flash-mozilla.so || true
+
+			[ "$quiet" != "no" ] || \
+			warning_about_alternatives
+
+			remove_extrafiles
+
+			for sourcefile in \
+				usr/bin/flash-player-properties \
+				usr/share/applications/flash-player-properties.desktop \
+				usr/share/icons/hicolor/16x16/apps/flash-player-properties.png \
+				usr/share/icons/hicolor/22x22/apps/flash-player-properties.png \
+				usr/share/icons/hicolor/24x24/apps/flash-player-properties.png \
+				usr/share/icons/hicolor/32x32/apps/flash-player-properties.png \
+				usr/share/icons/hicolor/48x48/apps/flash-player-properties.png \
+				usr/share/pixmaps/flash-player-properties.png \
+				;
+			do
+				if [ ! -e $sourcefile ]
+				then
+					echo "not found in tarball: $sourcefile" >&2
+				else
+					targetfile="/$sourcefile"
+
+					if [ -e $targetfile ]
+					then
+						echo "already exists: $targetfile" >&2
+					else
+						[ "$verbose" != "yes" ] || echo "installing $targetfile"
+
+						md5sum $sourcefile >> /var/lib/flashplugin-nonfree/extrafiles.md5sums
+						cp $sourcefile $targetfile
+						chown root:root $targetfile
+						chmod g-w $targetfile
+					fi
+				fi
+			done
+
+		fi # end if installed != upstream
+
+		[ "$verbose" != "yes" ] || echo "end of action $ACTION"
+
+		;;
+
+	--uninstall)
+		[ "$verbose" != "yes" ] || echo "selected action = $ACTION"
+
+		fix_missing_symlink || true
+
+		[ "$verbose" != "yes" ] || echo "calling update-alternatives ..."
+		update-alternatives --quiet --remove flash-mozilla.so \
+			/usr/lib/flashplugin-nonfree/libflashplayer.so || true
+
+		[ "$verbose" != "yes" ] || echo "removing files ..."
+		rm -f /usr/lib/flashplugin-nonfree/flashplayer.xpt
+		rm -f /usr/lib/flashplugin-nonfree/libflashplayer.so
+
+		remove_extrafiles
+
+		[ "$verbose" != "yes" ] || echo "end of action $ACTION"
+
+		;;
+
+	--status)
+		[ "$verbose" != "yes" ] || echo "selected action = $ACTION"
+
+		get_installed_version
+		echo "Flash Player version installed on this system  : $installed"
+		get_upstream_version
+		echo "Flash Player version available on upstream site: $upstream"
+
+		LANG=C update-alternatives --display flash-mozilla.so || true
+
+		[ "$verbose" != "yes" ] || echo "end of action $ACTION"
+
+		;;
+
+	*)
+
+		do_cleanup
+		show_usage
+
+		;;
+
+esac
+
+do_cleanup
+
+[ "$verbose" != "yes" ] || echo "end of update-flashplugin-nonfree"
+

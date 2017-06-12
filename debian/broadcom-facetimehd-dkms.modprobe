@@ -1,0 +1,2 @@
+# FacetimeHD from Broadcom conflicts with following modules:
+blacklist bdc_pci

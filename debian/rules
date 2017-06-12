@@ -1,0 +1,37 @@
+#!/usr/bin/make -f
+
+#export DH_VERBOSE=1
+
+version         := $(shell dpkg-parsechangelog | sed -nr '/^Version:/s/Version: (.*:)?(.*)~(.*)/\2/p')
+
+source_name     := broadcom-facetimehd
+
+frwr_package    := firmware-$(source_name)
+frwr_target     := usr/sbin/
+
+dkms_package    := $(source_name)-dkms
+dkms_target     := usr/src/$(source_name)-$(version)
+
+%:
+	dh $@ --with dkms
+
+install-tmp:
+	mkdir -p debian/tmp
+	cp -a fthd* debian/tmp/
+	cp -a Makefile debian/tmp/
+
+install-dkms: install-tmp
+	dh_installdirs -p $(dkms_package) $(dkms_target)
+	dh_install -p $(dkms_package) debian/tmp/* $(dkms_target)/
+
+install-frwr:
+	dh_installdirs -p $(frwr_package) ${frwr_target}
+	dh_install -p $(frwr_package) debian/download-facetimehd-firmware ${frwr_target}
+
+override_dh_install: install-dkms install-frwr
+
+override_dh_dkms:
+	dh_dkms -V $(version)
+
+# do nothing
+override_dh_auto_configure override_dh_auto_build override_dh_auto_test override_dh_auto_install override_dh_auto_clean:

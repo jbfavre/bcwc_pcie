@@ -1,0 +1,48 @@
+.TH UPDATE-FIRMWARE-BROADCOM-FACETIMEHD 8 "April 12, 2016"
+
+.SH NAME
+update-firmware-broadcom-facetimehd \- program to get the newest Broadcom Facetime HD firmware
+
+.SH SYNOPSIS
+.B update-firmware-broadcom-facetimehd
+.RI --install
+.br
+.B update-firmware-broadcom-facetimehd
+.RI --uninstall
+
+.SH DESCRIPTION
+The program
+.B update-firmware-broadcom-facetimehd
+takes care of
+downloading last Facetime HD firmware from Apple and store it on filesystem so that 
+it can be used by kernel driver.
+.PP
+A copy of the downloaded firmware is saved in /var/cache/firmware-broadcom-facetimehd for later reuse.
+.PP
+The program
+.B firmware-broadcom-facetimehd
+is used in the
+.B postinst
+and
+.B prerm
+scripts of the Debian package,
+but this program can also be run manually by root.
+
+.SH OPTIONS
+.TP
+.B \-\-install
+To install, update or remove the Facetime HD firmware
+.TP
+.B \-\-uninstall
+To remove the Facetime HD firmware.
+.TP
+.B \-\-verbose
+Produce detailed information about what's happening.
+.TP
+.B \-\-quiet
+Produce no informational output.
+
+.SH SEE ALSO
+.TP
+.B https://github.com/patjak/bcwc_pcie
+Linux driver for Facetime HD homepage
