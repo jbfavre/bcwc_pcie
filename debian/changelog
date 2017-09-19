@@ -1,6 +1,5 @@
-broadcom-facetimehd (0.0.1~git20170612-fcdcc9a-1) unstable; urgency=medium
+broadcom-facetimehd (0.0.1~git20170919-a22f248-1) unstable; urgency=medium
 
-  * Switch from master to mainline for packaging
   * First package version (Closes: #816958)
 
- -- Jean Baptiste Favre <debian@jbfavre.org>  Mon, 12 Jun 2017 09:41:38 +0200
+ -- Jean Baptiste Favre <debian@jbfavre.org>  Tue, 19 Sep 2017 16:29:08 +0200
