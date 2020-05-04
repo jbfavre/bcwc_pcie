@@ -19,6 +19,7 @@ hash_fw_wnd_105='dabb8cf8e874451ebc85c51ef524bd83ddfa237c9ba2e191f8532b896594e50
 hash_fw_wnd_138='ed75dc37b1a0e19949e9e046a629cb55deb6eec0f13ba8fd8dd49b5ccd5a800e'
 hash_fw_osx_140='504fcf1565bf10d61b31a12511226ae51991fb55d480f82de202a2f7ee9c966e'
 hash_fw_osx_143='e3e6034a67dfdaa27672dd547698bbc5b33f47f1fc7f5572a2fb68ea09d32d3d'
+hash_fw_osx_145='e3e6034a67dfdaa27672dd547698bbc5b33f47f1fc7f5572a2fb68ea09d32d4d'
 
 # Driver names
 declare -A known_hashes=(
@@ -69,20 +70,25 @@ declare -A firmw_hashes=(
   ["$hash_fw_wnd_138"]='1.38'
   ["$hash_fw_osx_140"]='1.40.0'
   ["$hash_fw_osx_143"]='1.43.0'
+  ["$hash_fw_osx_145"]='1.45.0'
 )
 
 printHelp()
 {
   cat <<HELP_DOC
-Usage: $0 [OPTIONS]
+Usage: extract-firmware [OPTIONS]
 
 OPTION:
 
   -h  --help          Print this help message and exit.
 
-  -i  --install       Download, extract and install binary firmware
+  --dmg DMG_FILE      Decompress the dmg file DMG_FILE, and extract the
+                      OS X camrea driver.
 
-  -u --uninstall      Remove binary firmware
+  -i  --ignore-hashes Ignore the firmware checksums and verify only the
+                      binary header and footer of the extracted firmeare.
+
+  -x DRV_FILE         Extract the firmware from the driver DRV_FILE
 
 NOTES:
 
@@ -98,7 +104,6 @@ NOTES:
   However only the version 1.43.0 of the firmware from OS X actually works.
 
 HELP_DOC
-  exit 1
 }
 
 msg()
@@ -142,7 +147,6 @@ checkPrerequisites()
   hasProgram "dd"
   hasProgram "sha256sum"
   hasProgram "zcat"
-  hasProgram "curl"
 }
 
 getCheckSum()
@@ -248,10 +252,10 @@ decompress_dmg()
 
   msg2 "Decoding Payload..."
   pbzx "OSXUpd"*.pkg"/Payload" > /dev/null
-  rm "OSXUpdCombo10.11.3.pkg/Payload"
+  rm "OSXUpd10.11.3.pkg/Payload"
 
   msg2 "Decompressing archives..."
-  cd "OSXUpdCombo10.11.3.pkg" 
+  cd "OSXUpd10.11.3.pkg"
   find . -name "Payload.part*.xz" -exec xz --decompress --verbose {} \;
   cat "Payload.part"* | cpio -id &> /dev/null
   cp "./System/Library/Extensions/AppleCameraInterface.kext/Contents/MacOS/AppleCameraInterface" \
@@ -283,72 +287,74 @@ extract_from_osx()
   fi
 }
 
-must_be_root()
+downloadDmgFile()
 {
-  echo "must be root"
-  exit 1
+  DMG=OSXUpd10.11.5.dmg
+  OSX_DRV=AppleCameraInterface
+  OSX_DRV_DIR=System/Library/Extensions/AppleCameraInterface.kext/Contents/MacOS
+
+  RANGE=204909802-207733123
+
+  URL=https://updates.cdn-apple.com/2019/cert/041-88431-20191011-e7ee7d98-2878-4cd9-bc0a-d98b3a1e24b1/${DMG}
+  FILE=${OSX_DRV_DIR}/${OSX_DRV}
+
+  echo "Downloading the driver, please wait..."
+  curl -s -L -r "${RANGE}" "${URL}" | xzcat -q | cpio --format odc -i -d "./${FILE}" &> /dev/null || true
+  mv "${FILE}" .
+  rmdir -p "${OSX_DRV_DIR}"
 }
 
-action=none
+main()
+{
+  echo ""
 
-# Parsing arguments
-while [[ $# > 0 ]]; do
-  case $1 in
-    -h|--help)
-      printHelp
-      exit 1
-      ;;
-    -i|--install)
-      action='install'
-      shift
-      ;;
-    -u|--uninstall)
-      action='uninstall'
-      shift
-      ;;
-  esac
-  shift
-done
+  # Parsing arguments
+  while [[ $# > 0 ]]; do
+    case $1 in
+      -h|--help)
+        printHelp
+        exit 1
+        ;;
+      --dmg)
+        dmg_file="$2"
+        shift
+        ;;
+      -x)
+        drv_file="$2"
+        shift
+        ;;
+      -i|--ignore-hashes)
+        skip_sums="1"
+    esac
+    shift
+  done
 
-[ "$action" != "none" -a $# -eq 0 ] || printHelp
+  checkPrerequisites
 
-#[ `whoami` = "root" ] || must_be_root
+  if [[ ! -z "$dmg_file" ]]; then
+    checkDmgPrerequisites
+    decompress_dmg "$dmg_file" 
+  fi
 
-checkPrerequisites
+  cd "${_main_dir}"
 
-DMG='osxupd10.11.5.dmg'
-OSX_DRV='AppleCameraInterface'
-OSX_DRV_DIR='System/Library/Extensions/AppleCameraInterface.kext/Contents/MacOS'
+  if [[ -z "$dmg_file" && -z "$drv_file" ]]; then
+    downloadDmgFile
+    extract_from_osx "AppleCameraInterface"
+    FW_DIR="/lib/firmware/facetimehd"
+    echo "Copying firmware into '${FW_DIR}'"
+    install -dm755 "${FW_DIR}"
+    install -m644 "firmware.bin" "${FW_DIR}/firmware.bin"
+  fi
 
-# https://github.com/patjak/bcwc_pcie/issues/14#issuecomment-167446787
-RANGE='205261917-208085450'
+  if [[ ! -z "$drv_file" ]]; then
+    extract_from_osx "$drv_file"
+  fi
 
-URL="https://support.apple.com/downloads/DL1877/en_US/${DMG}"
-FILE="${OSX_DRV_DIR}/${OSX_DRV}"
+  echo ""
+  exit 0
+}
 
-FW_DIR_BASE='/lib/firmware/facetimehd'
+_main_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-TMPDIR=$(mktemp -d)
-OLD_PWD=$PWD
-cd ${TMPDIR}
-
-msg "Downloading & extracting OS X driver..."
-/usr/bin/curl -s -L -r "${RANGE}" "${URL}" | xzcat --quiet --quiet | cpio -i -d --format odc --quiet --warning=none "./${FILE}" 2>&1> /dev/null || true
-/bin/mv ${FILE} ${TMPDIR}/${OSX_DRV}
-
-extract_from_osx "${OSX_DRV}"
-
-msg "Installing firmware in ${FW_DIR_BASE}..."
-msg2 "Creating ${FW_DIR_BASE} directory..."
-/bin/mkdir -p ${FW_DIR_BASE}
-msg2 "Moving firmware..."
-/bin/mv ${TMPDIR}/firmware.bin ${FW_DIR_BASE}/
-msg2 "Updating owner..."
-chown -R root:root ${FW_DIR_BASE}
-msg2 "Updating permissions..."
-chmod 644 ${FW_DIR_BASE}/firmware.bin
-
-cd ${OLD_PWD}
-rm -rf ${TMPDIR}
-
-exit 0
+main "$@"
