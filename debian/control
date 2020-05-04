@@ -2,7 +2,7 @@ Source: broadcom-facetimehd
 Section: kernel
 Priority: optional
 Maintainer: Jean Baptiste Favre <debian@jbfavre.org>
-Build-Depends: debhelper (>= 11), dkms
+Build-Depends: debhelper-compat (= 12), dkms
 Standards-Version: 4.5.0
 Homepage: https://github.com/patjak/bcwc_pcie
 
