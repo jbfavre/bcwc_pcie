@@ -1,3 +1,20 @@
+broadcom-facetimehd (0.0.1~git20200504-b67382a-1) unstable; urgency=medium
+
+  [ Patrik Jakobsson ]
+  * facetimehd: Disable ASPM
+  * firmware: Remove superfluous slash in install path
+  * firmware: Moved the firmware tools to it's own repository
+
+  [ Andreas Kemnade ]
+  * facetimehd: compile fix for kernel 5.4
+  * facetimehd: set device_caps in video_device
+
+  [ Patrik Jakobsson ]
+  * Fix warning for usage of uninitialized variable
+  * Replace ioremap_nocache() with ioremap()
+
+ -- Jean Baptiste Favre <debian@jbfavre.org>  Mon, 04 May 2020 08:46:53 +0200
+
 broadcom-facetimehd (0.0.1~git20170919-a22f248-1) unstable; urgency=medium
 
   * First package version (Closes: #816958)
