@@ -1,3 +1,10 @@
+broadcom-facetimehd (0.0.1~git20200504-b67382a-2) unstable; urgency=medium
+
+  * Update download-facetimehd-firmware script
+  * Update dkms stuff in debian/ dir
+
+ -- Jean Baptiste Favre <debian@jbfavre.org>  Mon, 04 May 2020 12:17:21 +0200
+
 broadcom-facetimehd (0.0.1~git20200504-b67382a-1) unstable; urgency=medium
 
   [ Patrik Jakobsson ]
